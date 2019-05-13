@@ -9,15 +9,27 @@ struct CacheEntry<K, V> {
 
 const DEFAULT_MOVE: usize = 50;
 
+struct Lru<K> {
+        ring: Vec<K>,
+        top: usize,
+        max_pointer: usize,
+        move_ratio: usize,
+        min_update_distance: usize,
+        min_update_limit: usize,
+        long_distance: usize,
+    }
+
+impl<K> Lru<K> {
+
+    fn set_min_update_limit(&mut self) {
+        self.min_update_limit = 1 + self.max_pointer - (self.max_pointer * self.move_ratio) / 100;
+    }
+}
+
+
 pub struct SwapCache<K, V> {
-    ring: Vec<K>,
-    top: usize,
-    max_pointer: usize,
     mapping: HashMap<K, CacheEntry<K, V>>,
-    move_ratio: usize,
-    min_update_distance: usize,
-    min_update_limit: usize,
-    long_distance: usize,
+    lru: Lru<K>,
 }
 
 // BUG: lets get rid of all the magic constants
@@ -28,17 +40,19 @@ where
 {
     pub fn new(size: usize) -> SwapCache<K, V> {
         let mut cache = SwapCache {
-            ring: Vec::new(),
-            top: 0,
-            max_pointer: size - 1,
             mapping: HashMap::new(),
-            move_ratio: DEFAULT_MOVE,
-            min_update_distance: (size * DEFAULT_MOVE) / 100,
-            min_update_limit: 0,
-            long_distance: size / 4,
+            lru: Lru {
+                ring: Vec::new(),
+                top: 0,
+                max_pointer: size - 1,
+                move_ratio: DEFAULT_MOVE,
+                min_update_distance: (size * DEFAULT_MOVE) / 100,
+                min_update_limit: 0,
+                long_distance: size / 4,
+            },
         };
 
-        cache.set_min_update_limit();
+        cache.lru.set_min_update_limit();
 
         cache
     }
@@ -58,68 +72,74 @@ where
             return;
         }
 
-        self.mapping.insert(
+        let lru = &mut self.lru;
+        let mapping = &mut self.mapping;
+        
+        mapping.insert(
             key.clone(),
             CacheEntry {
                 key: key.clone(),
                 value,
-                index: self.top,
+                index: lru.top,
             },
         );
 
-        if self.ring.len() <= self.top {
-            self.ring.push(key);
+        if lru.ring.len() <= lru.top {
+            lru.ring.push(key);
         } else {
-            let dead_key = &self.ring[self.top];
+            let dead_key = &lru.ring[lru.top];
 
-            self.mapping.remove(dead_key);
+            mapping.remove(dead_key);
 
-            self.ring[self.top] = key;
+            lru.ring[lru.top] = key;
 
-            if self.min_update_distance > (self.move_ratio / 100) {
-                self.min_update_distance -= 1;
+            if lru.min_update_distance > (lru.move_ratio / 100) {
+                lru.min_update_distance -= 1;
             }
         }
 
-        self.top += 1;
+        lru.top += 1;
 
-        if self.top > self.max_pointer {
-            self.top = 0;
+        if lru.top > lru.max_pointer {
+            lru.top = 0;
         } 
 
     }
 
     fn update<'a>(&'a mut self, key: K, count: usize) -> Option<&'a mut CacheEntry<K, V>> {
-        let mut currnet_index = match self.mapping.get(&key) {
+        let mapping = &mut self.mapping;
+        let lru     = &mut self.lru;
+        
+        let mut currnet_index = match mapping.get(&key) {
             None => return None,
             Some(e) => e.index,
         };
         
-        let distance = if currnet_index <= self.top {
-            self.top - currnet_index
+        let distance = if currnet_index <= lru.top {
+            lru.top - currnet_index
         } else {
-            self.top + self.max_pointer - currnet_index
+            lru.top + lru.max_pointer - currnet_index
         };
 
-        if distance <= self.min_update_distance {
-            return self.mapping.get_mut(&key);
+        if distance <= lru.min_update_distance {
+            return mapping.get_mut(&key);
         }
 
-        let mut move_distance = (distance * self.move_ratio) / 100;
+        let mut move_distance = (distance * lru.move_ratio) / 100;
 
         let steep_size = max(move_distance / count, 1);
 
         let next_index = loop {
             let mut next_index = currnet_index + steep_size;
 
-            if next_index >= self.max_pointer {
-                next_index -= self.max_pointer;
+            if next_index >= lru.max_pointer {
+                next_index -= lru.max_pointer;
             }
 
-            let demoted = self.ring[next_index].clone();
+            let demoted = lru.ring[next_index].clone();
 
-            self.mapping.get_mut(&demoted).unwrap().index = currnet_index;
-            self.ring[currnet_index] = demoted;
+            mapping.get_mut(&demoted).unwrap().index = currnet_index;
+            lru.ring[currnet_index] = demoted;
 
             currnet_index = next_index;
 
@@ -130,32 +150,28 @@ where
             }
         };
 
-        if self.min_update_distance < self.min_update_limit {
-            self.min_update_distance += 1;
+        if lru.min_update_distance < lru.min_update_limit {
+            lru.min_update_distance += 1;
         }
 
-        if (distance < self.long_distance) && (self.move_ratio >= 1) {
-            self.move_ratio -= 1;
-            self.set_min_update_limit();
-        } else if self.move_ratio < 99 {
-            self.move_ratio += 1;
-            self.set_min_update_limit();
+        if (distance < lru.long_distance) && (lru.move_ratio >= 1) {
+            lru.move_ratio -= 1;
+            lru.set_min_update_limit();
+        } else if lru.move_ratio < 99 {
+            lru.move_ratio += 1;
+            lru.set_min_update_limit();
         }
 
-        let entry = match self.mapping.get_mut(&key) {
+        let entry = match mapping.get_mut(&key) {
             None => return None,
             Some(e) => e,
         };
 
         entry.index = next_index;
 
-        self.ring[next_index] = entry.key.clone();
+        lru.ring[next_index] = entry.key.clone();
 
         Some(entry)
-    }
-
-    fn set_min_update_limit(&mut self) {
-        self.min_update_limit = 1 + self.max_pointer - (self.max_pointer * self.move_ratio) / 100;
     }
 }
 
