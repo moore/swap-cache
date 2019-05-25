@@ -28,8 +28,9 @@ impl<K> Lru<K> {
 
 
 pub struct SwapCache<K, V> {
-    mapping: HashMap<K, CacheEntry<K, V>>,
-    lru: Lru<K>,
+    mapping: HashMap<K, usize>,
+    lru: Lru<usize>,
+    entries: Vec<CacheEntry<K,V>>
 }
 
 // BUG: lets get rid of all the magic constants
@@ -50,6 +51,7 @@ where
                 min_update_limit: 0,
                 long_distance: size / 4,
             },
+            entries: Vec::new(),
         };
 
         cache.lru.set_min_update_limit();
@@ -74,46 +76,67 @@ where
 
         let lru = &mut self.lru;
         let mapping = &mut self.mapping;
+        let entries = &mut self.entries;
         
+        let slot =
+            if lru.ring.len() <= lru.top {
+                let slot = entries.len();
+                
+                let entry = CacheEntry {
+                    key: key.clone(),
+                    value,
+                    index: slot, //same as index
+                };
+            
+                entries.push(entry);
+                lru.ring.push(slot);
+                
+                slot
+            } else {
+                let slot = lru.ring[lru.top];
+
+                let dead_key = {
+                    entries[slot].key.clone()
+                };
+            
+                mapping.remove(&dead_key);
+
+                entries[slot] = CacheEntry {
+                    key: key.clone(),
+                    value,
+                    index: lru.top,
+                };
+            
+                if lru.min_update_distance > (lru.move_ratio / 100) {
+                    lru.min_update_distance -= 1;
+                }
+
+                slot
+            };
+
         mapping.insert(
-            key.clone(),
-            CacheEntry {
-                key: key.clone(),
-                value,
-                index: lru.top,
-            },
+            key,
+            slot,
         );
-
-        if lru.ring.len() <= lru.top {
-            lru.ring.push(key);
-        } else {
-            let dead_key = &lru.ring[lru.top];
-
-            mapping.remove(dead_key);
-
-            lru.ring[lru.top] = key;
-
-            if lru.min_update_distance > (lru.move_ratio / 100) {
-                lru.min_update_distance -= 1;
-            }
-        }
 
         lru.top += 1;
 
         if lru.top > lru.max_pointer {
             lru.top = 0;
         } 
-
     }
 
     fn update<'a>(&'a mut self, key: K, count: usize) -> Option<&'a mut CacheEntry<K, V>> {
-        let mapping = &mut self.mapping;
+        let mapping = &self.mapping;
         let lru     = &mut self.lru;
+        let entries = &mut self.entries;
         
-        let mut currnet_index = match mapping.get(&key) {
+        let slot = match mapping.get(&key) {
             None => return None,
-            Some(e) => e.index,
+            Some(slot) => *slot,
         };
+
+        let mut currnet_index = entries[slot].index;
         
         let distance = if currnet_index <= lru.top {
             lru.top - currnet_index
@@ -122,12 +145,12 @@ where
         };
 
         if distance <= lru.min_update_distance {
-            return mapping.get_mut(&key);
+            return Some(&mut entries[slot]);
         }
 
         let mut move_distance = (distance * lru.move_ratio) / 100;
 
-        let steep_size = max(move_distance / count, 1);
+        let steep_size = max(move_distance/count, 1);
 
         let next_index = loop {
             let mut next_index = currnet_index + steep_size;
@@ -136,9 +159,9 @@ where
                 next_index -= lru.max_pointer;
             }
 
-            let demoted = lru.ring[next_index].clone();
+            let demoted = lru.ring[next_index];
 
-            mapping.get_mut(&demoted).unwrap().index = currnet_index;
+            entries[demoted].index = currnet_index;
             lru.ring[currnet_index] = demoted;
 
             currnet_index = next_index;
@@ -162,14 +185,11 @@ where
             lru.set_min_update_limit();
         }
 
-        let entry = match mapping.get_mut(&key) {
-            None => return None,
-            Some(e) => e,
-        };
+        let entry = &mut entries[slot];
 
         entry.index = next_index;
 
-        lru.ring[next_index] = entry.key.clone();
+        lru.ring[next_index] = slot;
 
         Some(entry)
     }
