@@ -1,5 +1,7 @@
 use std::cmp::max;
-use std::collections::HashMap;
+//use std::collections::HashMap;
+use hashbrown::HashMap;
+
 
 struct CacheEntry<K, V> {
     key: K,
@@ -40,6 +42,7 @@ where
     V: std::fmt::Display, //BOOG remove std::fmt::Display
 {
     pub fn new(size: usize) -> SwapCache<K, V> {
+        // BUG: Should we size mapping, ring, and entries to size right away?
         let mut cache = SwapCache {
             mapping: HashMap::new(),
             lru: Lru {
@@ -252,4 +255,6 @@ mod tests {
         assert_eq!(cache.get(update_key), Some(&update_value));
         assert_eq!(cache.get(displaced_key), None);
     }
+
+
 }
