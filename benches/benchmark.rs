@@ -85,7 +85,7 @@ fn lru_put_get2(n: usize) {
 
 
 fn criterion_benchmark(c: &mut Criterion) {
-    /*
+    
     c.bench_function("SwapCache::new 100", |b| {b.iter(|| sc_new(black_box(100)))});
     c.bench_function("Lru::new 100", |b| {b.iter(|| lru_new(black_box(100)))});
 
@@ -94,7 +94,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     
     c.bench_function("SwapCache::put get 100", |b| {b.iter(|| sc_put_get(black_box(100)))});
     c.bench_function("Lru::put get 100", |b| {b.iter(|| lru_put_get(black_box(100)))});
-    */
+ 
     c.bench_function("SwapCache::put get 2 100", |b| {b.iter(|| sc_put_get2(black_box(100)))});
     c.bench_function("Lru::put get 2 100", |b| {b.iter(|| lru_put_get2(black_box(100)))});
 }

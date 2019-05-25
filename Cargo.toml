@@ -7,11 +7,21 @@ edition = "2018"
 [dependencies]
 hashbrown = "0.3.0"
 
+rand = { version = "0.6.5", optional = true }
+lru = { version = "0.1.15", optional = true }
+
 [dev-dependencies]
 criterion = "0.2"
 lru = "0.1.15"
-rand = "0.6.5"
+
+[features]
+build-recall = ["rand", "lru"]
 
 [[bench]]
 name = "benchmark"
 harness = false
+
+[[bin]]
+name = "recall-tests"
+path = "src/recall.rs"
+required-features = ["build-recall"]
