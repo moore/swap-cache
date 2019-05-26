@@ -110,7 +110,7 @@ fn test_distribution<D>(distribution: &D, name: String) where
     let lru_hits = run_recall(&mut lru, &data);
 
     
-    println!("Hits {} SwapCache {} LruCache {} diff {}", name, sw_hits, lru_hits, sw_hits - lru_hits);
+    println!("Hits {}\tSwapCache {} LruCache {} diff {}", name, sw_hits, lru_hits, sw_hits - lru_hits);
 }
 
 fn test_log_normal() {
