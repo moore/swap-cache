@@ -37,8 +37,7 @@ pub struct SwapCache<K, V> {
 // BUG: lets get rid of all the magic constants
 impl<K, V> SwapCache<K, V>
 where
-    K: Clone + std::cmp::Eq + std::hash::Hash + std::fmt::Display, //BOOG remove std::fmt::Display
-    V: std::fmt::Display, //BOOG remove std::fmt::Display
+    K: Clone + std::cmp::Eq + std::hash::Hash
 {
     pub fn new(size: usize) -> SwapCache<K, V> {
         // BUG: Should we size mapping, ring, and entries to size right away?
@@ -61,7 +60,7 @@ where
         cache
     }
 
-    pub fn get(&mut self, key: K) -> Option<&V> {
+    pub fn get(&mut self, key: &K) -> Option<&V> {
         let entry = self.update(key, 10);
 
         match entry {
@@ -128,12 +127,12 @@ where
         } 
     }
 
-    fn update<'a>(&'a mut self, key: K, count: usize) -> Option<&'a mut CacheEntry<K, V>> {
+    fn update<'a>(&'a mut self, key: &K, count: usize) -> Option<&'a mut CacheEntry<K, V>> {
         let mapping = &self.mapping;
         let lru     = &mut self.lru;
         let entries = &mut self.entries;
         
-        let slot = match mapping.get(&key) {
+        let slot = match mapping.get(key) {
             None => return None,
             Some(slot) => *slot,
         };
@@ -212,7 +211,7 @@ mod tests {
         }
 
         for (value, key) in pairs.clone() {
-            assert_eq!(cache.get(key), Some(&value))
+            assert_eq!(cache.get(&key), Some(&value))
         }
     }
 
@@ -228,11 +227,11 @@ mod tests {
         }
 
         for (value, key) in &pairs[16..26] {            
-            assert_eq!(cache.get( *key ), Some(value));
+            assert_eq!(cache.get( key ), Some(value));
         }
 
         for (_, key) in &pairs[0..16] {            
-            assert_eq!(cache.get( *key ), None);
+            assert_eq!(cache.get( key ), None);
         }
     }
 
@@ -249,10 +248,10 @@ mod tests {
         
         for (value, key) in pairs.clone() {
             cache.put(key, value);
-            cache.get(update_key);
+            cache.get(&update_key);
         }
-        assert_eq!(cache.get(update_key), Some(&update_value));
-        assert_eq!(cache.get(displaced_key), None);
+        assert_eq!(cache.get(&update_key), Some(&update_value));
+        assert_eq!(cache.get(&displaced_key), None);
     }
 
 

@@ -46,7 +46,7 @@ fn sc_put_get(n: usize) {
     }
 
     for key in 0..(n*100) {
-        let _val = cache.get(key);
+        let _val = cache.get(&key);
     }
 }
 
@@ -68,7 +68,7 @@ fn sc_put_get2(n: usize) {
             cache.put(key * i, "test value".to_owned());
         }
 
-        let _val = cache.get(key);
+        let _val = cache.get(&key);
     }
 }
 
